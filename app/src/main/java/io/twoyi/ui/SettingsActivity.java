@@ -253,6 +253,9 @@ public class SettingsActivity extends AppCompatActivity {
                 ContentResolver contentResolver = activity.getContentResolver();
                 try (InputStream inputStream = contentResolver.openInputStream(uri);
                      OutputStream os = new FileOutputStream(targetFile)) {
+                    if (!ContentResolver.SCHEME_CONTENT.equals(uri.getScheme())) {
+                        throw new IOException("unsupported uri scheme");
+                    }
                     if (inputStream == null) {
                         throw new IOException("failed to open selected file");
                     }

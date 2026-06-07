@@ -232,7 +232,7 @@ public final class RomManager {
         if (forceInstall) {
             if (use3rdRom) {
                 // install 3rd rom
-                boolean success = extract3rdRootfs(context, useImportedContainer);
+                boolean success = extractExternalRootfs(context, useImportedContainer);
                 if (!success) {
                     showRootfsInstallationFailure(context);
                     return;
@@ -261,6 +261,8 @@ public final class RomManager {
                 if (!extractRootfsInAssets(context)) {
                     showRootfsInstallationFailure(context);
                 }
+            } else if (needsUpgrade) {
+                Log.i(TAG, "skip factory rom upgrade because android10 rootfs is selected.");
             }
         }
     }
@@ -281,7 +283,7 @@ public final class RomManager {
         Process.killProcess(Process.myPid());
     }
 
-    public static boolean extract3rdRootfs(Context context, boolean useImportedContainer) {
+    public static boolean extractExternalRootfs(Context context, boolean useImportedContainer) {
         File rootfs3rd = useImportedContainer ? getImportedContainerFile(context) : get3rdRootfsFile(context);
         if (!rootfs3rd.exists()) {
             return false;
