@@ -90,13 +90,41 @@ PS. Please use ndk v22 or lower, otherwise it may fail.
 Currently you cannot build the ROM yourself, instead you can use the prebuilt ROM.
 To do that, extract rootfs.7z from the official release apk and copy it to `app/src/main/assets`.
 
+### Build and package another Android 10 rootfs
+
+You can build your own Android 10 rootfs and package it for Twoyi:
+
+1. Prepare your Android 10 rootfs directory with this layout:
+   - `rootfs/init`
+   - `rootfs/system/...`
+   - `rootfs/vendor/...`
+   - `rootfs/rom.ini`
+2. Make sure `rootfs/rom.ini` contains at least:
+   - `author=...`
+   - `version=...`
+   - `code=...` (number)
+   - `desc=...`
+3. Package it as a 7z file from the directory that contains `rootfs`:
+   - `7z a -t7z rootfs_android10.7z rootfs`
+4. Copy `rootfs_android10.7z` to `app/src/main/assets/`.
+5. In app settings, choose **Use Android 10 rootfs** and reboot.
+
+### Import container rootfs package
+
+You can also import a rootfs package at runtime:
+
+1. Build a rootfs 7z package with the same `rootfs/...` layout and `rootfs/rom.ini`.
+2. In app settings, choose **Import Container**.
+3. Select your 7z file and confirm.
+4. Twoyi will switch to the imported container on next boot.
+
 ### Build the app with Android Studio
 
 Build it with Android Studio normally.
 
 ### Build the ROM
 
-WIP
+See **Build and package another Android 10 rootfs** above for packaging details used by this app.
 
 ## Discussion
 

@@ -36,6 +36,16 @@
             android:title="@string/settings_key_replace_rom" />
 
         <Preference
+            android:key="@string/settings_key_import_container"
+            android:summary="@string/settings_import_container_summary"
+            android:title="@string/settings_key_import_container" />
+
+        <Preference
+            android:key="@string/settings_key_use_android10_rootfs"
+            android:summary="@string/settings_use_android10_rootfs_summary"
+            android:title="@string/settings_key_use_android10_rootfs" />
+
+        <Preference
             android:key="@string/settings_key_factory_reset"
             android:summary="@string/settings_factory_reset_summary"
             android:title="@string/settings_key_factory_reset" />
