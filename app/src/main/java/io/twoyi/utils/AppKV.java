@@ -31,6 +31,9 @@ public class AppKV {
 
     // 是否应该使用第三方 ROM
     public static final String SHOULD_USE_THIRD_PARTY_ROM = "should_use_third_party_rom";
+    public static final String SHOULD_USE_IMPORTED_CONTAINER = "should_use_imported_container";
+    public static final String SHOULD_USE_ANDROID10_ROM = "should_use_android10_rom";
+
     public static boolean getBooleanConfig(Context context,  String key, boolean fallback) {
         return getPref(context).getBoolean(key, fallback);
     }

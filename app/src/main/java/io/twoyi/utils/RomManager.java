@@ -51,6 +51,7 @@ public final class RomManager {
     private static final String TAG = "RomManager";
 
     private static final String ROOTFS_NAME = "rootfs.7z";
+    private static final String ROOTFS_ANDROID10_NAME = "rootfs_android10.7z";
 
     private static final String ROM_INFO_FILE = "rom.ini";
 
@@ -59,6 +60,7 @@ public final class RomManager {
     private static final String LOADER_FILE = "libloader.so";
 
     private static final String CUSTOM_ROM_FILE_NAME = "rootfs_3rd.7z";
+    private static final String IMPORT_CONTAINER_FILE_NAME = "container_import.7z";
 
     private RomManager() {
     }
@@ -211,7 +213,8 @@ public final class RomManager {
         return DEFAULT_ROM_INFO;
     }
 
-    public static void extractRootfs(Context context, boolean romExist, boolean needsUpgrade, boolean forceInstall, boolean use3rdRom) {
+    public static void extractRootfs(Context context, boolean romExist, boolean needsUpgrade, boolean forceInstall,
+                                     boolean use3rdRom, boolean useImportedContainer, boolean useAndroid10Rom) {
 
         // force remove system dir to avoiding wired issues
         removeSystemPartition(context);
@@ -219,15 +222,23 @@ public final class RomManager {
 
         if (!romExist) {
             // first init
-            extractRootfsInAssets(context);
+            boolean success = useAndroid10Rom ? extractRootfsAndroid10InAssets(context) : extractRootfsInAssets(context);
+            if (!success) {
+                showRootfsInstallationFailure(context);
+            }
             return;
         }
 
         if (forceInstall) {
             if (use3rdRom) {
                 // install 3rd rom
-                boolean success = extract3rdRootfs(context);
+                boolean success = extract3rdRootfs(context, useImportedContainer);
                 if (!success) {
+                    showRootfsInstallationFailure(context);
+                    return;
+                }
+            } else if (useAndroid10Rom) {
+                if (!extractRootfsAndroid10InAssets(context)) {
                     showRootfsInstallationFailure(context);
                     return;
                 }
@@ -245,7 +256,7 @@ public final class RomManager {
             if (use3rdRom) {
                 Log.w(TAG, "WTF? 3rd ROM must be force install!");
             }
-            if (needsUpgrade) {
+            if (needsUpgrade && !useAndroid10Rom) {
                 Log.i(TAG, "upgrade factory rom..");
                 if (!extractRootfsInAssets(context)) {
                     showRootfsInstallationFailure(context);
@@ -270,8 +281,8 @@ public final class RomManager {
         Process.killProcess(Process.myPid());
     }
 
-    public static boolean extract3rdRootfs(Context context) {
-        File rootfs3rd = get3rdRootfsFile(context);
+    public static boolean extract3rdRootfs(Context context, boolean useImportedContainer) {
+        File rootfs3rd = useImportedContainer ? getImportedContainerFile(context) : get3rdRootfsFile(context);
         if (!rootfs3rd.exists()) {
             return false;
         }
@@ -287,11 +298,19 @@ public final class RomManager {
     }
 
     public static boolean extractRootfsInAssets(Context context) {
+        return extractRootfsInAssets(context, ROOTFS_NAME);
+    }
+
+    public static boolean extractRootfsAndroid10InAssets(Context context) {
+        return extractRootfsInAssets(context, ROOTFS_ANDROID10_NAME);
+    }
+
+    private static boolean extractRootfsInAssets(Context context, String assetFileName) {
 
         // read assets
         long t1 = SystemClock.elapsedRealtime();
-        File rootfs7z = context.getFileStreamPath(ROOTFS_NAME);
-        try (InputStream inputStream = new BufferedInputStream(context.getAssets().open(ROOTFS_NAME));
+        File rootfs7z = context.getFileStreamPath(assetFileName);
+        try (InputStream inputStream = new BufferedInputStream(context.getAssets().open(assetFileName));
              OutputStream os = new BufferedOutputStream(new FileOutputStream(rootfs7z))) {
             byte[] buffer = new byte[10240];
             int count;
@@ -299,7 +318,8 @@ public final class RomManager {
                 os.write(buffer, 0, count);
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            Log.e(TAG, "read rootfs from assets failed: " + assetFileName, e);
+            return false;
         }
         long t2 = SystemClock.elapsedRealtime();
 
@@ -307,7 +327,7 @@ public final class RomManager {
 
         long t3 = SystemClock.elapsedRealtime();
 
-        Log.i(TAG, "extract rootfs, read assets: " + (t2 - t1) + " un7z: " + (t3 - t2) + "ret: " + ret);
+        Log.i(TAG, "extract rootfs " + assetFileName + ", read assets: " + (t2 - t1) + " un7z: " + (t3 - t2) + "ret: " + ret);
 
         return ret == 0;
     }
@@ -330,6 +350,10 @@ public final class RomManager {
 
     public static File get3rdRootfsFile(Context context) {
         return context.getFileStreamPath(CUSTOM_ROM_FILE_NAME);
+    }
+
+    public static File getImportedContainerFile(Context context) {
+        return context.getFileStreamPath(IMPORT_CONTAINER_FILE_NAME);
     }
 
     public static boolean isAndroid12() {

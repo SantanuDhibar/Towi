@@ -50,7 +50,8 @@ import io.twoyi.utils.UIHelper;
 
 public class SettingsActivity extends AppCompatActivity {
 
-    private static final int REQUEST_GET_FILE = 1000;
+    private static final int REQUEST_GET_ROM_FILE = 1000;
+    private static final int REQUEST_GET_CONTAINER_FILE = 1001;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -103,6 +104,8 @@ public class SettingsActivity extends AppCompatActivity {
             Preference shutdown = findPreference(R.string.settings_key_shutdown);
             Preference reboot = findPreference(R.string.settings_key_reboot);
             Preference replaceRom = findPreference(R.string.settings_key_replace_rom);
+            Preference importContainer = findPreference(R.string.settings_key_import_container);
+            Preference useAndroid10Rootfs = findPreference(R.string.settings_key_use_android10_rootfs);
             Preference factoryReset = findPreference(R.string.settings_key_factory_reset);
 
             Preference donate = findPreference(R.string.settings_key_donate);
@@ -136,18 +139,30 @@ public class SettingsActivity extends AppCompatActivity {
             });
 
             replaceRom.setOnPreferenceClickListener(preference -> {
+                openFilePicker(REQUEST_GET_ROM_FILE);
+                return true;
+            });
 
-                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+            importContainer.setOnPreferenceClickListener(preference -> {
+                openFilePicker(REQUEST_GET_CONTAINER_FILE);
+                return true;
+            });
 
-                // you can only select one rootfs
-                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false);
-                intent.setType("*/*"); // apk file
-                intent.addCategory(Intent.CATEGORY_OPENABLE);
-                try {
-                    startActivityForResult(intent, REQUEST_GET_FILE);
-                } catch (Throwable ignored) {
-                    Toast.makeText(getContext(), "Error", Toast.LENGTH_SHORT).show();
-                }
+            useAndroid10Rootfs.setOnPreferenceClickListener(preference -> {
+                Activity activity = getActivity();
+                UIHelper.getDialogBuilder(activity)
+                        .setTitle(android.R.string.dialog_alert_title)
+                        .setMessage(R.string.use_android10_rootfs_confirm_message)
+                        .setPositiveButton(R.string.i_confirm_it, (dialog, which) -> {
+                            AppKV.setBooleanConfig(activity, AppKV.SHOULD_USE_THIRD_PARTY_ROM, false);
+                            AppKV.setBooleanConfig(activity, AppKV.SHOULD_USE_IMPORTED_CONTAINER, false);
+                            AppKV.setBooleanConfig(activity, AppKV.SHOULD_USE_ANDROID10_ROM, true);
+                            AppKV.setBooleanConfig(activity, AppKV.FORCE_ROM_BE_RE_INSTALL, true);
+                            dialog.dismiss();
+                            RomManager.reboot(activity);
+                        })
+                        .setNegativeButton(android.R.string.cancel, (dialog, which) -> dialog.dismiss())
+                        .show();
                 return true;
             });
 
@@ -157,6 +172,8 @@ public class SettingsActivity extends AppCompatActivity {
                         .setMessage(R.string.factory_reset_confirm_message)
                         .setPositiveButton(R.string.i_confirm_it, (dialog, which) -> {
                             AppKV.setBooleanConfig(getActivity(), AppKV.SHOULD_USE_THIRD_PARTY_ROM, false);
+                            AppKV.setBooleanConfig(getActivity(), AppKV.SHOULD_USE_IMPORTED_CONTAINER, false);
+                            AppKV.setBooleanConfig(getActivity(), AppKV.SHOULD_USE_ANDROID10_ROM, false);
                             AppKV.setBooleanConfig(getActivity(), AppKV.FORCE_ROM_BE_RE_INSTALL, true);
                             dialog.dismiss();
 
@@ -208,7 +225,8 @@ public class SettingsActivity extends AppCompatActivity {
         public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
             super.onActivityResult(requestCode, resultCode, data);
 
-            if (!(requestCode == REQUEST_GET_FILE && resultCode == Activity.RESULT_OK)) {
+            if (!((requestCode == REQUEST_GET_ROM_FILE || requestCode == REQUEST_GET_CONTAINER_FILE)
+                    && resultCode == Activity.RESULT_OK)) {
                 return;
             }
 
@@ -228,11 +246,16 @@ public class SettingsActivity extends AppCompatActivity {
 
             // start copy 3rd rom
             UIHelper.defer().when(() -> {
-
-                File rootfs3rd = RomManager.get3rdRootfsFile(activity);
+                File targetFile = requestCode == REQUEST_GET_ROM_FILE
+                        ? RomManager.get3rdRootfsFile(activity)
+                        : RomManager.getImportedContainerFile(activity);
 
                 ContentResolver contentResolver = activity.getContentResolver();
-                try (InputStream inputStream = contentResolver.openInputStream(uri); OutputStream os = new FileOutputStream(rootfs3rd)) {
+                try (InputStream inputStream = contentResolver.openInputStream(uri);
+                     OutputStream os = new FileOutputStream(targetFile)) {
+                    if (inputStream == null) {
+                        throw new IOException("failed to open selected file");
+                    }
                     byte[] buffer = new byte[1024];
                     int count;
                     while ((count = inputStream.read(buffer)) > 0) {
@@ -240,11 +263,11 @@ public class SettingsActivity extends AppCompatActivity {
                     }
                 }
 
-                RomManager.RomInfo romInfo = RomManager.getRomInfo(rootfs3rd);
-                return Pair.create(rootfs3rd, romInfo);
+                RomManager.RomInfo romInfo = RomManager.getRomInfo(targetFile);
+                return Pair.create(targetFile, romInfo);
             }).done(result -> {
 
-                File rootfs3rd = result.first;
+                File targetFile = result.first;
                 RomManager.RomInfo romInfo = result.second;
                 UIHelper.dismiss(dialog);
 
@@ -252,9 +275,10 @@ public class SettingsActivity extends AppCompatActivity {
                 if (romInfo.isValid()) {
 
                     String author = romInfo.author;
-                    if ("weishu".equalsIgnoreCase(author) || "twoyi".equalsIgnoreCase(author)) {
+                    if (requestCode == REQUEST_GET_ROM_FILE
+                            && ("weishu".equalsIgnoreCase(author) || "twoyi".equalsIgnoreCase(author))) {
                         Toast.makeText(activity, R.string.replace_rom_unofficial_tips, Toast.LENGTH_SHORT).show();
-                        rootfs3rd.delete();
+                        targetFile.delete();
                         return;
 
                     }
@@ -262,7 +286,9 @@ public class SettingsActivity extends AppCompatActivity {
                             .setTitle(R.string.replace_rom_confirm_title)
                             .setMessage(getString(R.string.replace_rom_confirm_message, author, romInfo.version, romInfo.desc))
                             .setPositiveButton(R.string.i_confirm_it, (dialog1, which) -> {
-                                AppKV.setBooleanConfig(activity, AppKV.SHOULD_USE_THIRD_PARTY_ROM, true);
+                                AppKV.setBooleanConfig(activity, AppKV.SHOULD_USE_THIRD_PARTY_ROM, requestCode == REQUEST_GET_ROM_FILE);
+                                AppKV.setBooleanConfig(activity, AppKV.SHOULD_USE_IMPORTED_CONTAINER, requestCode == REQUEST_GET_CONTAINER_FILE);
+                                AppKV.setBooleanConfig(activity, AppKV.SHOULD_USE_ANDROID10_ROM, false);
                                 AppKV.setBooleanConfig(activity, AppKV.FORCE_ROM_BE_RE_INSTALL, true);
 
                                 dialog1.dismiss();
@@ -273,14 +299,25 @@ public class SettingsActivity extends AppCompatActivity {
                             .show();
                 } else {
                     Toast.makeText(activity, R.string.replace_rom_invalid, Toast.LENGTH_SHORT).show();
-                    rootfs3rd.delete();
+                    targetFile.delete();
                 }
             }).fail(result -> activity.runOnUiThread(() -> {
                 Toast.makeText(activity, getResources().getString(R.string.install_failed_reason, result.getMessage()), Toast.LENGTH_SHORT).show();
                 dialog.dismiss();
-                activity.finish();
             }));
 
+        }
+
+        private void openFilePicker(int requestCode) {
+            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false);
+            intent.setType("*/*");
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            try {
+                startActivityForResult(intent, requestCode);
+            } catch (Throwable ignored) {
+                Toast.makeText(getContext(), "Error", Toast.LENGTH_SHORT).show();
+            }
         }
     }
 }
